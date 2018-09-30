@@ -1,0 +1,451 @@
+---
+title: "Outline"
+output: pdf_document
+---
+
+```{r setup, echo=FALSE}
+library(knitr)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+
+
+## indents are for indenting r code as formatted text
+## They may need to be adjusted depending on your OS
+# if your output looks odd, increase or decrease indent
+indent1 = '    '
+indent2 = '        '
+indent3 = '            '
+indent4 = '      '
+```
+
+##Appendix
+```{r S1,  warning=F, message=F, tidy= TRUE}
+library(tidyverse)
+library(dplyr)
+library(tree)
+library(plyr)
+library(randomForest)
+library(class)
+library(rpart)
+library(maptree)
+library(ROCR)
+library(gbm)
+library(e1071)
+library(imager)
+
+```
+
+```{r 1, warning=F, message=F, tidy= TRUE, results ='hide'}
+tracks <- read.csv("tracks.csv", header = FALSE) 
+#col_names=c('M1','M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11','M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19','M20', 'M21','M22', 'M23', 'M24', 'M25', 'M26', 'M27', 'M28', 'M29','M30', 'M31','M32', 'M33', 'M34', 'M35', 'M36', 'M37', 'M38', 'M39', 'M40', 'M41','M42', 'M43', 'M44', 'M45', 'M46', 'M47', 'M48', 'M49', 'M50', 'M51','M52', 'M53', 'M54', 'M55', 'M56', 'M57', 'M58', 'M59','M60', 'M61','M62', 'M63', 'M64', 'M65', 'M66', 'M67', 'M68', 'latitude', 'longitude'
+
+tracks <- plyr::rename(tracks, c("V69"="latitude", "V70"="longitude"))
+
+```
+
+
+
+```{r 2,warning=F, message=F, tidy= TRUE, results ='hide'}
+#install.packages("rworldmap")
+library(sp)
+library(rworldmap)
+
+# The single argument to this function, points, is a data.frame in which:
+#   - column 1 contains the longitude in degrees
+#   - column 2 contains the latitude in degrees
+coords2country = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+  #countriesSP <- getMap(resolution='high') #you could use high res map from rworldxtra if you were concerned about detail
+
+  # convert our list of points to a SpatialPoints object
+
+  # pointsSP = SpatialPoints(points, proj4string=CRS(" +proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"))
+
+  #setting CRS directly to that from rworldmap
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+
+
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices = over(pointsSP, countriesSP)
+
+  # return the ADMIN names of each country
+  indices$ADMIN  
+  #indices$ISO3 # returns the ISO3 code 
+  #indices$continent   # returns the continent (6 continent model)
+  #indices$REGION   # returns the continent (7 continent model)
+}
+
+coords2continent = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+  #countriesSP <- getMap(resolution='high') #you could use high res map from rworldxtra if you were concerned about detail
+
+  # converting points to a SpatialPoints object
+  # setting CRS directly to that from rworldmap
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+
+
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices = over(pointsSP, countriesSP)
+
+  #indices$continent   # returns the continent (6 continent model)
+  indices$REGION   # returns the continent (7 continent model)
+  #indices$ADMIN  #returns country name
+  #indices$ISO3 # returns the ISO3 code 
+}
+
+points = data.frame(lon=c(0, 5, 10, 15, 20), lat=c(51.5, 50, 48.5, 47, 44.5))
+coords2country(points)
+coords2continent(points)
+```
+
+```{r 3,warning=F, message=F, tidy= TRUE, results ='hide'}
+points = data.frame(lon=as.numeric(tracks$longitude), lat=as.numeric(tracks$latitude))
+
+tracks <- cbind(tracks, as.data.frame(coords2country(points)), as.data.frame(coords2continent(points)))
+tracks <- tracks[complete.cases(tracks), ]
+```
+
+```{r 4,warning=F, message=F, tidy= TRUE, results ='hide'}
+tracks <- tracks %>%
+  mutate(ChinaOrNot =as.factor(ifelse(tracks[71] == "China", "Yes","No")))
+```
+
+```{r 1as, warning=F, message=F, tidy= TRUE, results ='hide'}
+#install.packages("countrycode")
+library(countrycode)
+
+country_code <- data.frame(country = countrycode(tracks[,71], origin = "country.name", destination = "cowc"))
+
+code <- country_code %>%
+  group_by(country) %>%
+  dplyr::summarise(n())
+class(code)
+
+```
+
+
+```{r 10, warning=F, message=F, tidy= TRUE, results ='hide'}
+#install.packages(plotly)
+library(plotly)
+packageVersion('plotly')
+
+
+
+# light grey boundaries
+l <- list(color = toRGB("grey"), width = 0.5)
+
+# specify map projection/options
+g <- list(
+  showframe = TRUE,
+  showcoastlines = TRUE,
+  projection = list(type = 'Mercator')
+)
+
+p <- plot_geo(code) %>%
+  add_trace(
+    z = ~`n()`, color = ~`n()`, colors = 'Blues',
+    text = ~country, locations = ~country, marker = list(line = l)
+  ) %>%
+  colorbar(title = 'Number of Instances') %>%
+  layout(
+    title = 'Music Dataset Origin Distribution',
+    geo = g
+  )
+
+```
+
+```{r W9, warning=F, message=F, tidy= TRUE, results ='hide'}
+#install.packages("ggmap")
+#install.packages("maptools")
+#install.packages("maps")
+library("ggmap")
+library(maptools)
+library(maps)
+
+
+#Using GGPLOT, plot the Base World Map
+mp <- NULL
+mapWorld <- borders("world", colour="gray50", fill="gray50") # create a layer of borders
+latlong <- tracks[,69:70]
+mp <- ggplot(latlong) +   mapWorld
+mp <- mp + geom_count(aes(x=longitude, y=latitude), color="steelblue1")+scale_size(range = c(0, 10))
+mp + labs(title = "Dataset Distribution by Counts")
+
+tracks %>%
+  group_by(`coords2country(points)`) %>%
+  dplyr::summarise(n())
+
+```
+
+
+```{r 5, warning=F, message=F, tidy= TRUE, results ='hide'}
+tracks_subset <- tracks %>% select(V1:V68, ChinaOrNot)
+set.seed(1)
+test.indices = sample(1:nrow(tracks), 800)
+tracks_train=tracks_subset[test.indices,]
+tracks_test=tracks_subset[-test.indices,] 
+dim(tracks_train)
+dim(tracks_test)
+```
+First, we fit a logistic regression model.
+```{r 6, warning=F, message=F, tidy= TRUE, results ='hide'}
+glm.fit = glm(ChinaOrNot ~., data=tracks_train, family=binomial)
+summary(glm.fit)
+
+prob.training = predict(glm.fit, tracks_test, type="response")
+```
+Now we select the best threshold
+```{r thr2, warning=F, message=F, tidy= TRUE, results ='hide'}
+pred = prediction(prob.training, tracks_test$ChinaOrNot)
+fpr = performance(pred, "fpr")@y.values[[1]]
+cutoff = performance(pred, "fpr")@x.values[[1]]
+# FNR
+fnr = performance(pred,"fnr")@y.values[[1]]
+# Plot
+
+rate = as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+rate$distance = sqrt((rate[,2])^2+(rate[,3])^2)
+index = which.min(rate$distance)
+best = rate$Cutoff[index]
+best
+```
+Using the best threshold, we create the confusion matrix.
+```{r thr, warning=F, message=F, tidy= TRUE, results ='hide'}
+tracks_log = tracks_test %>%
+mutate(predCHINA=as.factor(ifelse(prob.training<best, "No", "Yes")))
+# Confusion matrix (training error/accuracy)
+table(pred=tracks_log$predCHINA, true=tracks_log$ChinaOrNot)
+```
+
+```{r 14, warning=F, message=F, tidy= TRUE, results ='hide'}
+set.seed(1)
+bag.tracks = randomForest(ChinaOrNot ~ .,data=tracks_train,importance=TRUE)
+
+bag.tracks
+
+yhat_forest = predict (bag.tracks, newdata = tracks_test)
+# Confusion matrix
+rf.err = table(pred = yhat_forest, truth = tracks_test$ChinaOrNot)
+test.rf.err = 1 - sum(diag(rf.err))/sum(rf.err)
+test.rf.err
+```
+
+
+Now we select the best threshold
+```{r thr2h, warning=F, message=F, tidy= TRUE, results ='hide'}
+prob.training2 = predict(bag.tracks, tracks_test, type="prob")
+# Save the predicted labels using 0.5 as a threshold
+pred2 = prediction(prob.training2[,2], tracks_test$ChinaOrNot)
+fpr = performance(pred2, "fpr")@y.values[[1]]
+cutoff = performance(pred2, "fpr")@x.values[[1]]
+# FNR
+fnr = performance(pred2,"fnr")@y.values[[1]]
+# Plot
+
+rate = as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+rate$distance = sqrt((rate[,2])^2+(rate[,3])^2)
+index2 = which.min(rate$distance)
+best2 = rate$Cutoff[index2]
+best2
+```
+
+```{r 3234, warning=F, message=F, tidy= TRUE}
+
+tracks_bag = tracks_test %>%
+mutate(predCHINA=as.factor(ifelse(prob.training2[,2]<best2, "No", "Yes")))
+# Confusion matrix (training error/accuracy)
+table(pred=tracks_bag$predCHINA, true=tracks_bag$ChinaOrNot)
+
+
+varImpPlot(bag.tracks)
+```
+
+
+```{r 13, warning=F, message=F, tidy= TRUE, results ='hide'}
+set.seed(1)
+boost.tracks = gbm(ifelse(ChinaOrNot=="Yes",1,0)~., data=tracks_train, shrinkage = 0.01 ,
+                     n.trees=1000, distribution="bernoulli")
+summary(boost.tracks)
+par(mfrow =c(1,2))
+plot(boost.tracks ,i="V5")
+plot(boost.tracks ,i="V6")
+
+yhat_boost = predict (boost.tracks, newdata = tracks_test, n.trees = 500)
+# Confusion matrix
+rf.err2 = table(pred = yhat_boost, truth = tracks_test$ChinaOrNot)
+test.rf.err2 = 1 - sum(diag(rf.err2))/sum(rf.err2)
+test.rf.err2
+
+```
+
+
+Now we select the best threshold
+```{r thr3, warning=F, message=F, tidy= TRUE, results ='hide'}
+prob.training3 = predict(boost.tracks, tracks_test, type="response", n.trees = 1000)
+# Save the predicted labels using 0.5 as a threshold
+pred3 = prediction(prob.training3, tracks_test$ChinaOrNot)
+fpr = performance(pred3, "fpr")@y.values[[1]]
+cutoff = performance(pred3, "fpr")@x.values[[1]]
+# FNR
+fnr = performance(pred3,"fnr")@y.values[[1]]
+# Plot
+
+rate = as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+rate$distance = sqrt((rate[,2])^2+(rate[,3])^2)
+index3 = which.min(rate$distance)
+best3 = rate$Cutoff[index3]
+best3
+```
+
+```{r 32j34, warning=F, message=F, tidy= TRUE, results='hide'}
+
+# Save the predicted labels using 0.5 as a threshold
+tracks_boost = tracks_test %>%
+mutate(predCHINA=as.factor(ifelse(prob.training3<best3, "No", "Yes")))
+# Confusion matrix (training error/accuracy)
+table(pred=tracks_boost$predCHINA, true=tracks_bag$ChinaOrNot)
+
+
+```
+
+
+
+```{r 15,  warning=F, message=F, tidy=TRUE, fig.height = 6, fig.width = 8, results ='hide'}
+
+#predicting by boosting
+prob.test1 = predict(boost.tracks, tracks_test, type = "response", n.trees = 1000)
+
+```
+
+
+```{r 18, warning=F, message=F, tidy= TRUE, results ='hide'}
+
+#install.packages("glmnet")
+library(glmnet)
+x=model.matrix(ChinaOrNot~.-1,data=tracks_subset) 
+y=tracks_subset$ChinaOrNot
+set.seed(1)
+
+fit.ridge=glmnet(x,y,alpha=0, family = "binomial")
+plot(fit.ridge,xvar="lambda",label=TRUE)
+
+cv.ridge=cv.glmnet(x,y,alpha=0, family = "binomial")
+cv.ridge$lambda.min
+coef(cv.ridge, s = "lambda.min")
+
+
+ri <- predict(cv.ridge, newx = model.matrix(ChinaOrNot~.-1,data=tracks_test)[1:168,], s = "lambda.min", type = "response")
+
+```
+
+
+Now we select the best threshold
+```{r thr3h3, warning=F, message=F, tidy= TRUE, results ='hide'}
+prob.training4 = ri
+# Save the predicted labels using 0.5 as a threshold
+pred4 = prediction(prob.training4, tracks_test$ChinaOrNot)
+fpr = performance(pred4, "fpr")@y.values[[1]]
+cutoff = performance(pred4, "fpr")@x.values[[1]]
+# FNR
+fnr = performance(pred4,"fnr")@y.values[[1]]
+# Plot
+
+rate = as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+rate$distance = sqrt((rate[,2])^2+(rate[,3])^2)
+index4 = which.min(rate$distance)
+best4 = rate$Cutoff[index4]
+best4
+```
+
+```{r 32rj34, warning=F, message=F, tidy= TRUE}
+tracks_ridge = tracks_test %>%
+mutate(predCHINA=as.factor(ifelse(prob.training4<best4, "No", "Yes")))
+# Confusion matrix (training error/accuracy)
+table(pred=tracks_ridge$predCHINA, true=tracks_bag$ChinaOrNot)
+
+```
+
+```{r 20, warning=F, message=F, tidy= TRUE, results ='hide'}
+fit.lasso=glmnet(x,y,alpha=1, family = "binomial")
+plot(fit.lasso,xvar="lambda",label=TRUE)
+set.seed(1)
+cv.lasso=cv.glmnet(x,y,alpha=1, family = "binomial")
+cv.lasso$lambda.min
+coef(cv.lasso, s = "lambda.min")
+
+ri2 <- predict(cv.lasso, newx = model.matrix(ChinaOrNot~.-1,data=tracks_test)[1:168,], s = "lambda.min", type = "response")
+
+plot(cv.lasso)
+```
+
+
+Now we select the best threshold
+```{r thr33, warning=F, message=F, tidy= TRUE, results ='hide'}
+prob.training5 = ri2
+# Save the predicted labels using 0.5 as a threshold
+pred5 = prediction(prob.training5, tracks_test$ChinaOrNot)
+fpr = performance(pred5, "fpr")@y.values[[1]]
+cutoff = performance(pred5, "fpr")@x.values[[1]]
+# FNR
+fnr = performance(pred5,"fnr")@y.values[[1]]
+# Plot
+
+rate = as.data.frame(cbind(Cutoff=cutoff, FPR=fpr, FNR=fnr))
+rate$distance = sqrt((rate[,2])^2+(rate[,3])^2)
+index5 = which.min(rate$distance)
+best5 = rate$Cutoff[index5]
+best5
+```
+
+```{r 32rj34e, warning=F, message=F, tidy= TRUE}
+tracks_lasso = tracks_test %>%
+mutate(predCHINA=as.factor(ifelse(prob.training5<best5, "No", "Yes")))
+# Confusion matrix (training error/accuracy)
+table(pred=tracks_lasso$predCHINA, true=tracks_bag$ChinaOrNot)
+
+```
+
+```{r 19, warning=F, message=F, tidy= TRUE, results ='hide', echo = FALSE}
+pred.log <- prediction(predict(glm.fit, tracks_test, type="response"),
+                       tracks_test$ChinaOrNot)
+perf.log <- performance(pred.log, measure="tpr", x.measure="fpr")
+
+prob.test1 = predict(boost.tracks, tracks_test, type = "response", n.trees = 1000)
+pred.boosting <- prediction(prob.test1, tracks_test$ChinaOrNot)
+perf.boosting <- performance(pred.boosting, measure="tpr", x.measure="fpr")
+
+
+p2 <- predict(bag.tracks, tracks_test, type="prob")
+pred.bag <- prediction(p2[,2], tracks_test$ChinaOrNot)
+perf.bag <- performance(pred.bag, measure="tpr", x.measure="fpr")
+
+pred.ridge <- prediction(ri, tracks_test$ChinaOrNot)
+perf.ridge <- performance(pred.ridge, measure="tpr", x.measure="fpr")
+
+pred.lasso <- prediction(ri2, tracks_test$ChinaOrNot)
+perf.lasso <- performance(pred.lasso, measure="tpr", x.measure="fpr")
+
+plot(perf.boosting, col=1, lwd=3, main="ROC curves ") 
+lines(perf.bag@x.values[[1]], perf.bag@y.values[[1]], col = 2, lwd =3)
+lines(perf.log@x.values[[1]], perf.log@y.values[[1]], col = 3, lwd =3)
+lines(perf.ridge@x.values[[1]], perf.ridge@y.values[[1]], col = 4, lwd =3)
+lines(perf.lasso@x.values[[1]], perf.lasso@y.values[[1]], col = 5, lwd =3)
+
+abline(0,1)
+legend(0.6,0.2, legend=c("Boosting","Random Forest","Logistic Regression", "Ridge Regression", "Lasso Regression"), col=c(1,2,3,4,5), lwd=c(3,3))
+
+
+performance(pred.log, "auc")@y.values
+performance(pred.boosting, "auc")@y.values
+performance(pred.bag, "auc")@y.values
+performance(pred.ridge, "auc")@y.values
+performance(pred.lasso, "auc")@y.values
+```
+
+
+
+
+
